@@ -108,11 +108,54 @@ exports.getAllReservations = getAllReservations;
  * @param {*} limit The number of results to return.
  * @return {Promise<[{}]>}  A promise to the properties.
  */
-const getAllProperties = (options, limit = 10) =>
-  pool
-    .query('SELECT * FROM properties LIMIT $1', [limit])
+const getAllProperties = (options, limit = 10) => {
+  const {
+    city,
+    owner_id,
+    minimum_price_per_night,
+    maximum_price_per_night,
+    minimum_rating,
+  } = options;
+  const queryParams = [];
+  let queryStr = `
+SELECT properties.*, avg(property_reviews.rating) as average_rating
+FROM properties
+JOIN property_reviews ON properties.id = property_id
+`;
+  if (city) {
+    queryParams.push(`%${city}%`);
+    queryStr += `WHERE city LIKE $${queryParams.length} `;
+  }
+  if (owner_id) {
+    queryStr += queryParams.length ? 'AND ' : 'WHERE ';
+    // if (queryParams.length) queryStr += 'AND ';
+    queryParams.push(owner_id);
+    queryStr += `properties.owner_id = $${queryParams.length}::integer `;
+  }
+  if (minimum_price_per_night) {
+    queryStr += queryParams.length ? 'AND ' : 'WHERE ';
+    // if (queryParams.length) queryStr += 'AND ';
+    queryParams.push(minimum_price_per_night * 100);
+    queryStr += `properties.cost_per_night >= $${queryParams.length}::integer `;
+  }
+  if (maximum_price_per_night) {
+    queryStr += queryParams.length ? 'AND ' : 'WHERE ';
+    // if (queryParams.length) queryStr += 'AND ';
+    queryParams.push(maximum_price_per_night * 100);
+    queryStr += `properties.cost_per_night <= $${queryParams.length}::integer `;
+  }
+  queryStr += 'GROUP BY properties.id ';
+  if (minimum_rating) {
+    queryParams.push(minimum_rating);
+    queryStr += `HAVING avg(property_reviews.rating) >= $${queryParams.length}::real `;
+  }
+  queryParams.push(limit);
+  queryStr += `ORDER BY cost_per_night LIMIT $${queryParams.length}`;
+  return pool
+    .query(queryStr, queryParams)
     .then((res) => res.rows)
     .catch((e) => e.message);
+};
 exports.getAllProperties = getAllProperties;
 
 /**
